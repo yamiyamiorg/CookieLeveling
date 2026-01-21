@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from typing import Optional
+from typing import Iterable, Optional
 
 from .config import Config
 
@@ -80,3 +80,27 @@ def _ensure_meta(conn: sqlite3.Connection) -> None:
             "INSERT INTO meta (schema_version, created_at) VALUES (?, datetime('now'))",
             (_SCHEMA_VERSION,),
         )
+
+
+def reset_voice_states(guild_id: int) -> None:
+    conn = get_connection()
+    conn.execute(
+        "UPDATE users SET is_in_vc = 0, joined_at = NULL WHERE guild_id = ?",
+        (guild_id,),
+    )
+    conn.commit()
+
+
+def upsert_voice_state(
+    guild_id: int, user_id: int, is_in_vc: bool, joined_at: Optional[str]
+) -> None:
+    conn = get_connection()
+    conn.execute(
+        \"\"\"\n        INSERT INTO users (guild_id, user_id, is_in_vc, joined_at)\n        VALUES (?, ?, ?, ?)\n        ON CONFLICT(guild_id, user_id)\n        DO UPDATE SET is_in_vc = excluded.is_in_vc, joined_at = excluded.joined_at\n        \"\"\",\n        (guild_id, user_id, int(is_in_vc), joined_at),\n    )
+    conn.commit()
+
+
+def fetch_voice_states(guild_id: int) -> Iterable[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        \"\"\"\n        SELECT user_id, is_in_vc, joined_at\n        FROM users\n        WHERE guild_id = ?\n        ORDER BY user_id ASC\n        \"\"\",\n        (guild_id,),\n    ).fetchall()

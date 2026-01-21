@@ -2,18 +2,24 @@ import discord
 from discord import app_commands
 
 from .config import Config
+from datetime import datetime, timezone
+
 from .db import (
     fetch_guild_settings,
     fetch_rank_role_snapshot,
     fetch_user,
     get_connection,
+    grant_xp,
     set_optout,
+    set_voice_state,
+    set_xp,
     upsert_guild_settings,
 )
 from .debug_mutations import ensure_debug_mutations
 from .rankboard_publisher import send_rankboard_message, update_rankboard
 from .ranker import compute_top10
 from .role_sync import update_rank_roles
+from .xp_engine import tick_minute
 from .voice_tracker import get_voice_debug_lines
 
 
@@ -67,6 +73,60 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
             "joined_at={joined_at} last_earned_at={last_earned_at}"
         ).format(**row)
         await interaction.response.send_message(content, ephemeral=True)
+
+    @debug_group.command(name="grantxp", description="Grant XP to a user")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(target="User", season="Season XP", lifetime="Lifetime XP")
+    async def debug_grantxp(
+        interaction: discord.Interaction, target: discord.User, season: int, lifetime: int
+    ) -> None:
+        if not ensure_debug_mutations(config):
+            await interaction.response.send_message(
+                "DEBUG_MUTATIONS=1 required.", ephemeral=True
+            )
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        grant_xp(config.guild_id, target.id, season, lifetime, now)
+        await interaction.response.send_message("XP granted.", ephemeral=True)
+
+    @debug_group.command(name="setxp", description="Set XP for a user")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(
+        target="User",
+        season="Season XP",
+        lifetime="Lifetime XP",
+        rem_lifetime="Remainder for lifetime XP",
+    )
+    async def debug_setxp(
+        interaction: discord.Interaction,
+        target: discord.User,
+        season: int,
+        lifetime: int,
+        rem_lifetime: float | None = None,
+    ) -> None:
+        if not ensure_debug_mutations(config):
+            await interaction.response.send_message(
+                "DEBUG_MUTATIONS=1 required.", ephemeral=True
+            )
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        set_xp(config.guild_id, target.id, season, lifetime, rem_lifetime, now)
+        await interaction.response.send_message("XP set.", ephemeral=True)
+
+    @debug_group.command(name="setvc", description="Force VC state for a user")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(target="User", in_vc="True if in voice")
+    async def debug_setvc(
+        interaction: discord.Interaction, target: discord.User, in_vc: bool
+    ) -> None:
+        if not ensure_debug_mutations(config):
+            await interaction.response.send_message(
+                "DEBUG_MUTATIONS=1 required.", ephemeral=True
+            )
+            return
+        joined_at = datetime.now(timezone.utc).isoformat() if in_vc else None
+        set_voice_state(config.guild_id, target.id, in_vc, joined_at)
+        await interaction.response.send_message("VC state updated.", ephemeral=True)
 
     @debug_group.command(name="top10", description="Show top 10 ranking snapshot")
     @app_commands.checks.has_permissions(administrator=True)
@@ -132,6 +192,19 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         updated = await update_rankboard(bot, config)
         message = "Rankboard updated." if updated else "Rankboard not configured."
         await interaction.followup.send(message, ephemeral=True)
+
+    @tick_group.command(name="minute", description="Run minute XP tick once")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def debug_tick_minute(interaction: discord.Interaction) -> None:
+        if not ensure_debug_mutations(config):
+            await interaction.response.send_message(
+                "DEBUG_MUTATIONS=1 required.", ephemeral=True
+            )
+            return
+        updated = tick_minute(config.guild_id)
+        await interaction.response.send_message(
+            f"Minute tick updated {updated} users.", ephemeral=True
+        )
 
     @tick_group.command(name="roles", description="Run role sync once")
     @app_commands.checks.has_permissions(administrator=True)

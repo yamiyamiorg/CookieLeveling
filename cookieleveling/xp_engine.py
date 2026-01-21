@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-from .db import fetch_active_voice_users, update_user_xp
+from .db import fetch_active_voice_users, reset_season_xp, update_user_xp
+
+_LAST_RESET_MONTH: tuple[int, int] | None = None
 
 
 def tick_minute(guild_id: int) -> int:
@@ -36,3 +39,16 @@ def level_from_xp(lifetime_xp: int) -> int:
         return 1
     value = 1 + (1 + (lifetime_xp / 15)) ** 0.5
     return max(1, int(value // 2))
+
+
+def maybe_monthly_reset(guild_id: int) -> bool:
+    global _LAST_RESET_MONTH
+    now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
+    current_month = (now_jst.year, now_jst.month)
+    if now_jst.day != 1:
+        return False
+    if _LAST_RESET_MONTH == current_month:
+        return False
+    reset_season_xp(guild_id)
+    _LAST_RESET_MONTH = current_month
+    return True

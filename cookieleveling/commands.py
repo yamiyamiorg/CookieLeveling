@@ -54,7 +54,7 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
     @app_commands.checks.has_permissions(administrator=True)
     async def debug_vc(interaction: discord.Interaction) -> None:
         lines = get_voice_debug_lines(config.guild_id)
-        content = "VC snapshot:\\n" + "\\n".join(lines)
+        content = "VC snapshot:\n" + "\n".join(lines)
         await interaction.response.send_message(content, ephemeral=True)
 
     @debug_group.command(name="user", description="Show user XP state")

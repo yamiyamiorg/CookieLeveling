@@ -1,0 +1,8 @@
+services:
+  cookieleveling:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/opt/CookieLeveling/data
+    command: python -m cookieleveling

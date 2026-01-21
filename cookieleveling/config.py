@@ -1,0 +1,39 @@
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Config:
+    discord_token: str
+    discord_client_id: str
+    guild_id: int
+    tz: str
+    data_dir: str
+    db_path: str
+    debug_mutations: bool
+
+
+def _get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required env var: {name}")
+    return value
+
+
+def load_config() -> Config:
+    discord_token = _get_required_env("DISCORD_TOKEN")
+    discord_client_id = _get_required_env("DISCORD_CLIENT_ID")
+    guild_id = int(_get_required_env("GUILD_ID"))
+    tz = os.getenv("TZ", "Asia/Tokyo")
+    data_dir = os.getenv("DATA_DIR", "/opt/CookieLeveling/data")
+    db_path = os.getenv("DB_PATH", "/opt/CookieLeveling/data/cookieleveling.sqlite")
+    debug_mutations = os.getenv("DEBUG_MUTATIONS", "0") == "1"
+    return Config(
+        discord_token=discord_token,
+        discord_client_id=discord_client_id,
+        guild_id=guild_id,
+        tz=tz,
+        data_dir=data_dir,
+        db_path=db_path,
+        debug_mutations=debug_mutations,
+    )

@@ -5,6 +5,7 @@ import discord
 from .commands import setup_commands
 from .config import Config
 from .db import init_db
+from .scheduler import start_minute_scheduler
 from .voice_tracker import handle_voice_state_update, restore_voice_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class CookieLevelingBot(discord.Client):
         init_db(self.config)
         setup_commands(self, self.config)
         await self.tree.sync(guild=discord.Object(id=self.config.guild_id))
+        self._minute_task = start_minute_scheduler(self, self.config)
 
     async def on_ready(self) -> None:
         if not self._vc_restored:

@@ -3,6 +3,7 @@ from discord import app_commands
 
 from .config import Config
 from .db import get_connection
+from .voice_tracker import get_voice_debug_lines
 
 
 def setup_commands(bot: discord.Client, config: Config) -> None:
@@ -19,5 +20,12 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         await interaction.response.send_message(
             f"OK. schema_version={schema_version}", ephemeral=True
         )
+
+    @debug_group.command(name="vc", description="Show voice state snapshot")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def debug_vc(interaction: discord.Interaction) -> None:
+        lines = get_voice_debug_lines(config.guild_id)
+        content = "VC snapshot:\\n" + "\\n".join(lines)
+        await interaction.response.send_message(content, ephemeral=True)
 
     tree.add_command(debug_group, guild=discord.Object(id=config.guild_id))

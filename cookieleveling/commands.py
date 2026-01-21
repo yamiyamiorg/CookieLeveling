@@ -3,6 +3,7 @@ from discord import app_commands
 
 from .config import Config
 from .db import fetch_user, get_connection, set_optout
+from .ranker import compute_top10
 from .voice_tracker import get_voice_debug_lines
 
 
@@ -49,7 +50,31 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         if row is None:
             await interaction.response.send_message("User not found.", ephemeral=True)
             return
-        content = (\n            \"user_id={user_id} season_xp={season_xp} lifetime_xp={lifetime_xp} \"\n            \"rem_lifetime={rem_lifetime:.3f} optout={optout} is_in_vc={is_in_vc} \"\n            \"joined_at={joined_at} last_earned_at={last_earned_at}\"\n        ).format(**row)
+        content = (
+            "user_id={user_id} season_xp={season_xp} lifetime_xp={lifetime_xp} "
+            "rem_lifetime={rem_lifetime:.3f} optout={optout} is_in_vc={is_in_vc} "
+            "joined_at={joined_at} last_earned_at={last_earned_at}"
+        ).format(**row)
         await interaction.response.send_message(content, ephemeral=True)
+
+    @debug_group.command(name="top10", description="Show top 10 ranking snapshot")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def debug_top10(interaction: discord.Interaction) -> None:
+        top10 = compute_top10(config.guild_id)
+        if not top10:
+            await interaction.response.send_message("No ranking data.", ephemeral=True)
+            return
+        lines = []
+        for idx, entry in enumerate(top10, start=1):
+            last_earned = (
+                entry["last_earned_at"].isoformat()
+                if entry["last_earned_at"]
+                else "none"
+            )
+            lines.append(
+                f"{idx}. user_id={entry['user_id']} season_xp={entry['season_xp']} "
+                f"active_seconds={entry['active_seconds']} last_earned_at={last_earned}"
+            )
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     tree.add_command(debug_group, guild=guild)

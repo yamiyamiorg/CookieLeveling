@@ -100,6 +100,49 @@ def upsert_voice_state(
     conn.commit()
 
 
+def ensure_user(guild_id: int, user_id: int) -> None:
+    conn = get_connection()
+    conn.execute(
+        \"\"\"\n        INSERT OR IGNORE INTO users (guild_id, user_id)\n        VALUES (?, ?)\n        \"\"\",\n        (guild_id, user_id),\n    )
+    conn.commit()
+
+
+def set_optout(guild_id: int, user_id: int, optout: bool) -> None:
+    ensure_user(guild_id, user_id)
+    conn = get_connection()
+    conn.execute(
+        \"UPDATE users SET optout = ? WHERE guild_id = ? AND user_id = ?\",\n        (int(optout), guild_id, user_id),\n    )
+    conn.commit()
+
+
+def fetch_user(guild_id: int, user_id: int) -> Optional[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        \"\"\"\n        SELECT guild_id, user_id, season_xp, lifetime_xp, rem_lifetime,\n               optout, is_in_vc, joined_at, last_earned_at\n        FROM users\n        WHERE guild_id = ? AND user_id = ?\n        \"\"\",\n        (guild_id, user_id),\n    ).fetchone()
+
+
+def fetch_active_voice_users(guild_id: int) -> Iterable[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        \"\"\"\n        SELECT user_id, rem_lifetime\n        FROM users\n        WHERE guild_id = ? AND is_in_vc = 1 AND optout = 0\n        \"\"\",\n        (guild_id,),\n    ).fetchall()
+
+
+def update_user_xp(
+    *,
+    guild_id: int,
+    user_id: int,
+    season_inc: int,
+    lifetime_inc: int,
+    rem_lifetime: float,
+    last_earned_at: str,
+) -> None:
+    ensure_user(guild_id, user_id)
+    conn = get_connection()
+    conn.execute(
+        \"\"\"\n        UPDATE users\n        SET season_xp = season_xp + ?,\n            lifetime_xp = lifetime_xp + ?,\n            rem_lifetime = ?,\n            last_earned_at = ?\n        WHERE guild_id = ? AND user_id = ?\n        \"\"\",\n        (season_inc, lifetime_inc, rem_lifetime, last_earned_at, guild_id, user_id),\n    )
+    conn.commit()
+
+
 def fetch_voice_states(guild_id: int) -> Iterable[sqlite3.Row]:
     conn = get_connection()
     return conn.execute(

@@ -2,12 +2,23 @@ import discord
 from discord import app_commands
 
 from .config import Config
-from .db import get_connection
+from .db import fetch_user, get_connection, set_optout
 from .voice_tracker import get_voice_debug_lines
 
 
 def setup_commands(bot: discord.Client, config: Config) -> None:
     tree = bot.tree
+    guild = discord.Object(id=config.guild_id)
+
+    @tree.command(name="optout", description="Opt out of earning XP", guild=guild)
+    async def optout(interaction: discord.Interaction) -> None:
+        set_optout(config.guild_id, interaction.user.id, True)
+        await interaction.response.send_message("Opted out.", ephemeral=True)
+
+    @tree.command(name="optin", description="Opt in to earning XP", guild=guild)
+    async def optin(interaction: discord.Interaction) -> None:
+        set_optout(config.guild_id, interaction.user.id, False)
+        await interaction.response.send_message("Opted in.", ephemeral=True)
 
     debug_group = app_commands.Group(name="debug", description="Debug commands")
 
@@ -28,4 +39,17 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         content = "VC snapshot:\\n" + "\\n".join(lines)
         await interaction.response.send_message(content, ephemeral=True)
 
-    tree.add_command(debug_group, guild=discord.Object(id=config.guild_id))
+    @debug_group.command(name="user", description="Show user XP state")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(target="User to inspect")
+    async def debug_user(
+        interaction: discord.Interaction, target: discord.User
+    ) -> None:
+        row = fetch_user(config.guild_id, target.id)
+        if row is None:
+            await interaction.response.send_message("User not found.", ephemeral=True)
+            return
+        content = (\n            \"user_id={user_id} season_xp={season_xp} lifetime_xp={lifetime_xp} \"\n            \"rem_lifetime={rem_lifetime:.3f} optout={optout} is_in_vc={is_in_vc} \"\n            \"joined_at={joined_at} last_earned_at={last_earned_at}\"\n        ).format(**row)
+        await interaction.response.send_message(content, ephemeral=True)
+
+    tree.add_command(debug_group, guild=guild)

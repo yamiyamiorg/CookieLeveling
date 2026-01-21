@@ -246,3 +246,31 @@ def upsert_guild_settings(
         (guild_id, rankboard_channel_id, rankboard_message_id),
     )
     conn.commit()
+
+
+def fetch_rank_role_snapshot(guild_id: int) -> Optional[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        """
+        SELECT guild_id, last_snapshot_json, updated_at
+        FROM rank_role_last
+        WHERE guild_id = ?
+        """,
+        (guild_id,),
+    ).fetchone()
+
+
+def upsert_rank_role_snapshot(guild_id: int, snapshot_json: str) -> None:
+    conn = get_connection()
+    conn.execute(
+        """
+        INSERT INTO rank_role_last (guild_id, last_snapshot_json, updated_at)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(guild_id)
+        DO UPDATE SET
+            last_snapshot_json = excluded.last_snapshot_json,
+            updated_at = datetime('now')
+        """,
+        (guild_id, snapshot_json),
+    )
+    conn.commit()

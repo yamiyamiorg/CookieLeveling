@@ -6,6 +6,7 @@ import discord
 
 from .config import Config
 from .rankboard_publisher import update_rankboard
+from .role_sync import update_rank_roles
 from .xp_engine import tick_minute
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ async def _hourly_loop(bot: discord.Client, config: Config) -> None:
     await bot.wait_until_ready()
     while not bot.is_closed():
         try:
+            roles_updated = await update_rank_roles(bot, config)
+            if roles_updated:
+                _LOGGER.info("hourly roles updated")
             updated = await update_rankboard(bot, config)
             if updated:
                 _LOGGER.info("hourly rankboard updated")

@@ -4,6 +4,7 @@ from discord import app_commands
 from .config import Config
 from .db import (
     fetch_guild_settings,
+    fetch_rank_role_snapshot,
     fetch_user,
     get_connection,
     set_optout,
@@ -12,6 +13,7 @@ from .db import (
 from .debug_mutations import ensure_debug_mutations
 from .rankboard_publisher import send_rankboard_message, update_rankboard
 from .ranker import compute_top10
+from .role_sync import update_rank_roles
 from .voice_tracker import get_voice_debug_lines
 
 
@@ -100,6 +102,22 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         )
         await interaction.response.send_message(content, ephemeral=True)
 
+    @debug_group.command(name="roles", description="Show role sync status")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def debug_roles(interaction: discord.Interaction) -> None:
+        snapshot = fetch_rank_role_snapshot(config.guild_id)
+        snapshot_json = snapshot["last_snapshot_json"] if snapshot else "[]"
+        content = (
+            f"ROLE_SEASON_1={config.role_season_1} "
+            f"ROLE_SEASON_2={config.role_season_2} "
+            f"ROLE_SEASON_3={config.role_season_3} "
+            f"ROLE_SEASON_4={config.role_season_4} "
+            f"ROLE_SEASON_5={config.role_season_5} "
+            f"ROLE_SEASON_TOP10={config.role_season_top10} "
+            f"snapshot={snapshot_json}"
+        )
+        await interaction.response.send_message(content, ephemeral=True)
+
     tick_group = app_commands.Group(name="tick", description="Run debug ticks")
 
     @tick_group.command(name="rankboard", description="Run rankboard update once")
@@ -113,6 +131,19 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         await interaction.response.defer(ephemeral=True)
         updated = await update_rankboard(bot, config)
         message = "Rankboard updated." if updated else "Rankboard not configured."
+        await interaction.followup.send(message, ephemeral=True)
+
+    @tick_group.command(name="roles", description="Run role sync once")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def debug_tick_roles(interaction: discord.Interaction) -> None:
+        if not ensure_debug_mutations(config):
+            await interaction.response.send_message(
+                "DEBUG_MUTATIONS=1 required.", ephemeral=True
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        updated = await update_rank_roles(bot, config)
+        message = "Roles updated." if updated else "Roles not configured."
         await interaction.followup.send(message, ephemeral=True)
 
     debug_group.add_command(tick_group)

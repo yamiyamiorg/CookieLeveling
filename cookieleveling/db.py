@@ -143,6 +143,12 @@ def update_user_xp(
     conn.commit()
 
 
+def fetch_rank_candidates(guild_id: int) -> Iterable[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        \"\"\"\n        SELECT user_id, season_xp, joined_at, last_earned_at, is_in_vc, optout\n        FROM users\n        WHERE guild_id = ?\n        \"\"\",\n        (guild_id,),\n    ).fetchall()
+
+
 def fetch_voice_states(guild_id: int) -> Iterable[sqlite3.Row]:
     conn = get_connection()
     return conn.execute(

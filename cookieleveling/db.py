@@ -179,6 +179,82 @@ def update_user_xp(
     conn.commit()
 
 
+def grant_xp(
+    guild_id: int, user_id: int, season_inc: int, lifetime_inc: int, last_earned_at: str
+) -> None:
+    ensure_user(guild_id, user_id)
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE users
+        SET season_xp = season_xp + ?,
+            lifetime_xp = lifetime_xp + ?,
+            last_earned_at = ?
+        WHERE guild_id = ? AND user_id = ?
+        """,
+        (season_inc, lifetime_inc, last_earned_at, guild_id, user_id),
+    )
+    conn.commit()
+
+
+def set_xp(
+    guild_id: int,
+    user_id: int,
+    season_xp: int,
+    lifetime_xp: int,
+    rem_lifetime: Optional[float],
+    last_earned_at: str,
+) -> None:
+    ensure_user(guild_id, user_id)
+    conn = get_connection()
+    if rem_lifetime is None:
+        conn.execute(
+            """
+            UPDATE users
+            SET season_xp = ?,
+                lifetime_xp = ?,
+                last_earned_at = ?
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (season_xp, lifetime_xp, last_earned_at, guild_id, user_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE users
+            SET season_xp = ?,
+                lifetime_xp = ?,
+                rem_lifetime = ?,
+                last_earned_at = ?
+            WHERE guild_id = ? AND user_id = ?
+            """,
+            (season_xp, lifetime_xp, rem_lifetime, last_earned_at, guild_id, user_id),
+        )
+    conn.commit()
+
+
+def set_voice_state(
+    guild_id: int, user_id: int, is_in_vc: bool, joined_at: Optional[str]
+) -> None:
+    ensure_user(guild_id, user_id)
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE users
+        SET is_in_vc = ?, joined_at = ?
+        WHERE guild_id = ? AND user_id = ?
+        """,
+        (int(is_in_vc), joined_at, guild_id, user_id),
+    )
+    conn.commit()
+
+
+def reset_season_xp(guild_id: int) -> None:
+    conn = get_connection()
+    conn.execute("UPDATE users SET season_xp = 0 WHERE guild_id = ?", (guild_id,))
+    conn.commit()
+
+
 def fetch_rank_candidates(guild_id: int) -> Iterable[sqlite3.Row]:
     conn = get_connection()
     return conn.execute(
@@ -244,5 +320,33 @@ def upsert_guild_settings(
             updated_at = datetime('now')
         """,
         (guild_id, rankboard_channel_id, rankboard_message_id),
+    )
+    conn.commit()
+
+
+def fetch_rank_role_snapshot(guild_id: int) -> Optional[sqlite3.Row]:
+    conn = get_connection()
+    return conn.execute(
+        """
+        SELECT guild_id, last_snapshot_json, updated_at
+        FROM rank_role_last
+        WHERE guild_id = ?
+        """,
+        (guild_id,),
+    ).fetchone()
+
+
+def upsert_rank_role_snapshot(guild_id: int, snapshot_json: str) -> None:
+    conn = get_connection()
+    conn.execute(
+        """
+        INSERT INTO rank_role_last (guild_id, last_snapshot_json, updated_at)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(guild_id)
+        DO UPDATE SET
+            last_snapshot_json = excluded.last_snapshot_json,
+            updated_at = datetime('now')
+        """,
+        (guild_id, snapshot_json),
     )
     conn.commit()

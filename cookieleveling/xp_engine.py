@@ -29,3 +29,10 @@ def _lifetime_factor() -> float:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def level_from_xp(lifetime_xp: int) -> int:
+    if lifetime_xp <= 0:
+        return 1
+    value = 1 + (1 + (lifetime_xp / 15)) ** 0.5
+    return max(1, int(value // 2))

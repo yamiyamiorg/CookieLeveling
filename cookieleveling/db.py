@@ -146,12 +146,20 @@ def fetch_active_voice_users(guild_id: int) -> Iterable[sqlite3.Row]:
     conn = get_connection()
     return conn.execute(
         """
-        SELECT user_id, rem_lifetime
+        SELECT user_id, rem_lifetime, joined_at
         FROM users
         WHERE guild_id = ? AND is_in_vc = 1 AND optout = 0
         """,
         (guild_id,),
     ).fetchall()
+
+
+def fetch_schema_version() -> str:
+    conn = get_connection()
+    row = conn.execute("SELECT schema_version FROM meta LIMIT 1").fetchone()
+    if row is None:
+        return "unknown"
+    return str(row["schema_version"])
 
 
 def update_user_xp(

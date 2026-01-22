@@ -13,6 +13,7 @@
 - Stay in VC for at least 2 minutes and confirm XP increments.
 - Use `/optout` and verify XP stops; `/optin` resumes.
 - Verify `/debug user` reflects expected XP changes.
+- (Optional) `joined_at` を過去に調整して、Lifetime XPが 1.0/0.5/0.25 の係数で増えることを確認する。
 
 ## Phase4
 - Ensure `/debug top10` returns stable ordered results.
@@ -20,6 +21,7 @@
 
 ## Phase5
 - Run `/rankboard set` and confirm message placement.
+- Run `/rankboard set` again in another channel and confirm the old message is edited with a move notice.
 - Run `/debug tick rankboard` (DEBUG_MUTATIONS=1) to update attachments.
 
 ## Phase6

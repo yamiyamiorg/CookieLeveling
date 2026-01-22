@@ -7,10 +7,10 @@ _LAST_RESET_MONTH: tuple[int, int] | None = None
 
 
 def tick_minute(guild_id: int) -> int:
-    now = _utc_now()
+    now = datetime.now(timezone.utc)
     updated = 0
     for row in fetch_active_voice_users(guild_id):
-        factor = _lifetime_factor()
+        factor = _lifetime_factor(now, row["joined_at"])
         lifetime_total = row["rem_lifetime"] + factor
         lifetime_inc = int(lifetime_total)
         rem_lifetime = lifetime_total - lifetime_inc
@@ -20,25 +20,41 @@ def tick_minute(guild_id: int) -> int:
             season_inc=1,
             lifetime_inc=lifetime_inc,
             rem_lifetime=rem_lifetime,
-            last_earned_at=now,
+            last_earned_at=now.isoformat(),
         )
         updated += 1
     return updated
 
 
-def _lifetime_factor() -> float:
-    return 1.0
+def _lifetime_factor(now: datetime, joined_at: str | None) -> float:
+    if not joined_at:
+        return 1.0
+    joined = _parse_time(joined_at)
+    if joined is None:
+        return 1.0
+    elapsed_minutes = int((now - joined).total_seconds() // 60)
+    if elapsed_minutes < 0:
+        elapsed_minutes = 0
+    if elapsed_minutes < 60:
+        return 1.0
+    if elapsed_minutes < 120:
+        return 0.5
+    return 0.25
 
 
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _parse_time(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def level_from_xp(lifetime_xp: int) -> int:
     if lifetime_xp <= 0:
         return 1
-    value = 1 + (1 + (lifetime_xp / 15)) ** 0.5
-    return max(1, int(value // 2))
+    threshold = lifetime_xp / 60
+    level = int((1 + (1 + 4 * threshold) ** 0.5) // 2)
+    return max(1, level)
 
 
 def maybe_monthly_reset(guild_id: int) -> bool:

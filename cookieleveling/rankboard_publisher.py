@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-import io
 import logging
-import os
-from typing import Optional
 
 import discord
-from PIL import Image
 
 from .config import Config
-from .db import fetch_guild_settings
-from .image_renderer import render_lifetime_image, render_season_image
-from .ranker import compute_lifetime_top10, compute_top10
-from .xp_engine import level_from_xp
+from .db import fetch_guild_settings, upsert_guild_settings
+from .rankboard_renderer import RenderedRankboard, render_rankboard
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,9 +37,9 @@ async def update_rankboard(bot: discord.Client, config: Config) -> bool:
     files = await _render_files(bot, config)
     embeds = _build_embeds()
     try:
-        await message.edit(embeds=embeds, attachments=[], files=files)
+        await message.edit(embeds=embeds, attachments=files.files)
     finally:
-        _cleanup_files(files)
+        files.cleanup()
     return True
 
 
@@ -55,9 +49,30 @@ async def send_rankboard_message(
     files = await _render_files(bot, config)
     embeds = _build_embeds()
     try:
-        return await channel.send(embeds=embeds, files=files)
+        return await channel.send(embeds=embeds, files=files.files)
     finally:
-        _cleanup_files(files)
+        files.cleanup()
+
+
+async def set_rankboard(
+    bot: discord.Client, config: Config, channel: discord.abc.GuildChannel
+) -> tuple[bool, str]:
+    target_channel = _normalize_rankboard_channel(channel)
+    if target_channel is None:
+        return False, "このチャンネルでは設置できません。"
+
+    settings = fetch_guild_settings(config.guild_id)
+    if settings and settings["rankboard_message_id"]:
+        await _mark_rankboard_moved(
+            bot,
+            settings["rankboard_channel_id"],
+            settings["rankboard_message_id"],
+            target_channel.id,
+        )
+
+    message = await send_rankboard_message(bot, config, target_channel)
+    upsert_guild_settings(config.guild_id, target_channel.id, message.id)
+    return True, f"<#{target_channel.id}> に設置しました。"
 
 
 def _build_embeds() -> list[discord.Embed]:
@@ -68,70 +83,35 @@ def _build_embeds() -> list[discord.Embed]:
     return [season_embed, lifetime_embed]
 
 
-async def _render_files(bot: discord.Client, config: Config) -> list[discord.File]:
+async def _render_files(bot: discord.Client, config: Config) -> RenderedRankboard:
     guild = bot.get_guild(config.guild_id)
     if guild is None:
-        raise RuntimeError("Guild not found for rankboard rendering")
-
-    season_entries = await _prepare_season_entries(guild)
-    lifetime_entries = await _prepare_lifetime_entries(guild)
-
-    season_path = os.path.join(config.data_dir, "season.png")
-    lifetime_path = os.path.join(config.data_dir, "lifetime.png")
-
-    render_season_image(season_entries, season_path)
-    render_lifetime_image(lifetime_entries, lifetime_path)
-
-    return [
-        discord.File(season_path, filename="season.png"),
-        discord.File(lifetime_path, filename="lifetime.png"),
-    ]
+        raise RuntimeError("rankboardの描画に必要なGuildが見つかりません。")
+    return await render_rankboard(guild)
 
 
-async def _prepare_season_entries(guild: discord.Guild) -> list[dict]:
-    entries = []
-    for row in compute_top10(guild.id):
-        member = guild.get_member(row["user_id"])
-        entries.append(
-            {
-                "name": member.display_name if member else str(row["user_id"]),
-                "season_xp": row["season_xp"],
-                "avatar": await _fetch_avatar(member),
-            }
-        )
-    return entries
+def _normalize_rankboard_channel(
+    channel: discord.abc.GuildChannel,
+) -> discord.TextChannel | None:
+    if isinstance(channel, discord.Thread):
+        channel = channel.parent
+    if isinstance(channel, discord.TextChannel):
+        return channel
+    return None
 
 
-async def _prepare_lifetime_entries(guild: discord.Guild) -> list[dict]:
-    entries = []
-    for row in compute_lifetime_top10(guild.id):
-        member = guild.get_member(row["user_id"])
-        entries.append(
-            {
-                "name": member.display_name if member else str(row["user_id"]),
-                "level": level_from_xp(row["lifetime_xp"]),
-                "avatar": await _fetch_avatar(member),
-            }
-        )
-    return entries
-
-
-async def _fetch_avatar(member: Optional[discord.Member]) -> Optional[Image.Image]:
-    if member is None:
-        return None
+async def _mark_rankboard_moved(
+    bot: discord.Client, channel_id: int, message_id: int, new_channel_id: int
+) -> None:
+    channel = bot.get_channel(channel_id)
+    if channel is None or not isinstance(channel, discord.TextChannel):
+        return
     try:
-        data = await member.display_avatar.read()
-    except Exception:
-        return None
-    try:
-        return Image.open(io.BytesIO(data)).convert("RGB")
-    except Exception:
-        return None
-
-
-def _cleanup_files(files: list[discord.File]) -> None:
-    for file in files:
-        try:
-            os.remove(file.fp.name)
-        except OSError:
-            pass
+        message = await channel.fetch_message(message_id)
+    except discord.NotFound:
+        return
+    await message.edit(
+        content=f"移設されました: <#{new_channel_id}>",
+        embeds=[],
+        attachments=[],
+    )

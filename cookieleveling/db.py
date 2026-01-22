@@ -180,7 +180,11 @@ def update_user_xp(
 
 
 def grant_xp(
-    guild_id: int, user_id: int, season_inc: int, lifetime_inc: int, last_earned_at: str
+    guild_id: int,
+    user_id: int,
+    season_inc: int,
+    lifetime_inc: int,
+    last_earned_at: Optional[str],
 ) -> None:
     ensure_user(guild_id, user_id)
     conn = get_connection()
@@ -189,7 +193,7 @@ def grant_xp(
         UPDATE users
         SET season_xp = season_xp + ?,
             lifetime_xp = lifetime_xp + ?,
-            last_earned_at = ?
+            last_earned_at = COALESCE(?, last_earned_at)
         WHERE guild_id = ? AND user_id = ?
         """,
         (season_inc, lifetime_inc, last_earned_at, guild_id, user_id),

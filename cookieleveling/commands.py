@@ -15,24 +15,27 @@ from .db import (
     set_xp,
     upsert_guild_settings,
 )
-from .debug_mutations import ensure_debug_mutations
+from .debug_mutations import (
+    ensure_debug_mutations,
+    validate_grant_xp,
+    validate_set_xp,
+)
 from .rankboard_publisher import send_rankboard_message, update_rankboard
 from .ranker import compute_top10
-from .role_sync import update_rank_roles
+from .role_sync import role_sync_block_reason, update_rank_roles
 from .xp_engine import tick_minute
 from .voice_tracker import get_voice_debug_lines
 
 
 def setup_commands(bot: discord.Client, config: Config) -> None:
     tree = bot.tree
-    guild = discord.Object(id=config.guild_id)
 
-    @tree.command(name="optout", description="Opt out of earning XP", guild=guild)
+    @tree.command(name="optout", description="Opt out of earning XP")
     async def optout(interaction: discord.Interaction) -> None:
         set_optout(config.guild_id, interaction.user.id, True)
         await interaction.response.send_message("Opted out.", ephemeral=True)
 
-    @tree.command(name="optin", description="Opt in to earning XP", guild=guild)
+    @tree.command(name="optin", description="Opt in to earning XP")
     async def optin(interaction: discord.Interaction) -> None:
         set_optout(config.guild_id, interaction.user.id, False)
         await interaction.response.send_message("Opted in.", ephemeral=True)
@@ -80,14 +83,21 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
     async def debug_grantxp(
         interaction: discord.Interaction, target: discord.User, season: int, lifetime: int
     ) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        grant_xp(config.guild_id, target.id, season, lifetime, now)
-        await interaction.response.send_message("XP granted.", ephemeral=True)
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            message = validate_grant_xp(season, lifetime)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            now = datetime.now(timezone.utc).isoformat()
+            last_earned_at = now if season > 0 else None
+            grant_xp(config.guild_id, target.id, season, lifetime, last_earned_at)
+            await _send_ephemeral(interaction, "付与完了")
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     @debug_group.command(name="setxp", description="Set XP for a user")
     @app_commands.checks.has_permissions(administrator=True)
@@ -104,14 +114,20 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         lifetime: int,
         rem_lifetime: float | None = None,
     ) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        set_xp(config.guild_id, target.id, season, lifetime, rem_lifetime, now)
-        await interaction.response.send_message("XP set.", ephemeral=True)
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            message = validate_set_xp(season, lifetime, rem_lifetime)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            now = datetime.now(timezone.utc).isoformat()
+            set_xp(config.guild_id, target.id, season, lifetime, rem_lifetime, now)
+            await _send_ephemeral(interaction, "設定完了")
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     @debug_group.command(name="setvc", description="Force VC state for a user")
     @app_commands.checks.has_permissions(administrator=True)
@@ -119,14 +135,16 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
     async def debug_setvc(
         interaction: discord.Interaction, target: discord.User, in_vc: bool
     ) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        joined_at = datetime.now(timezone.utc).isoformat() if in_vc else None
-        set_voice_state(config.guild_id, target.id, in_vc, joined_at)
-        await interaction.response.send_message("VC state updated.", ephemeral=True)
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            joined_at = datetime.now(timezone.utc).isoformat() if in_vc else None
+            set_voice_state(config.guild_id, target.id, in_vc, joined_at)
+            await _send_ephemeral(interaction, "VC更新")
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     @debug_group.command(name="top10", description="Show top 10 ranking snapshot")
     @app_commands.checks.has_permissions(administrator=True)
@@ -183,41 +201,49 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
     @tick_group.command(name="rankboard", description="Run rankboard update once")
     @app_commands.checks.has_permissions(administrator=True)
     async def debug_tick_rankboard(interaction: discord.Interaction) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        await interaction.response.defer(ephemeral=True)
-        updated = await update_rankboard(bot, config)
-        message = "Rankboard updated." if updated else "Rankboard not configured."
-        await interaction.followup.send(message, ephemeral=True)
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            await interaction.response.defer(ephemeral=True)
+            updated = await update_rankboard(bot, config)
+            message = "更新" if updated else "未設置"
+            await interaction.followup.send(message, ephemeral=True)
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     @tick_group.command(name="minute", description="Run minute XP tick once")
     @app_commands.checks.has_permissions(administrator=True)
     async def debug_tick_minute(interaction: discord.Interaction) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        updated = tick_minute(config.guild_id)
-        await interaction.response.send_message(
-            f"Minute tick updated {updated} users.", ephemeral=True
-        )
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            updated = tick_minute(config.guild_id)
+            await _send_ephemeral(interaction, f"更新人数:{updated}")
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     @tick_group.command(name="roles", description="Run role sync once")
     @app_commands.checks.has_permissions(administrator=True)
     async def debug_tick_roles(interaction: discord.Interaction) -> None:
-        if not ensure_debug_mutations(config):
-            await interaction.response.send_message(
-                "DEBUG_MUTATIONS=1 required.", ephemeral=True
-            )
-            return
-        await interaction.response.defer(ephemeral=True)
-        updated = await update_rank_roles(bot, config)
-        message = "Roles updated." if updated else "Roles not configured."
-        await interaction.followup.send(message, ephemeral=True)
+        try:
+            message = ensure_debug_mutations(config)
+            if message:
+                await _send_ephemeral(interaction, message)
+                return
+            reason = role_sync_block_reason(config)
+            if reason:
+                await _send_ephemeral(interaction, reason)
+                return
+            await interaction.response.defer(ephemeral=True)
+            updated = await update_rank_roles(bot, config)
+            message = "更新" if updated else "更新不可"
+            await interaction.followup.send(message, ephemeral=True)
+        except Exception:
+            await _send_ephemeral(interaction, "エラー")
 
     debug_group.add_command(tick_group)
 
@@ -249,8 +275,8 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
             f"Rankboard set in <#{channel.id}>.", ephemeral=True
         )
 
-    tree.add_command(debug_group, guild=guild)
-    tree.add_command(rankboard_group, guild=guild)
+    tree.add_command(debug_group)
+    tree.add_command(rankboard_group)
 
 
 async def _mark_rankboard_moved(
@@ -268,3 +294,12 @@ async def _mark_rankboard_moved(
         embeds=[],
         attachments=[],
     )
+
+
+async def _send_ephemeral(
+    interaction: discord.Interaction, message: str
+) -> None:
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)

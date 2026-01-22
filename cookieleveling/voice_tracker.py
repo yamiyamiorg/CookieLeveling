@@ -50,13 +50,15 @@ def get_voice_debug_lines(guild_id: int) -> list[str]:
     rows = fetch_voice_states(guild_id)
     lines = []
     for row in rows:
-        if not row[\"is_in_vc\"]:
+        if not row["is_in_vc"]:
             continue
-        channel_id = _channel_map.get((guild_id, row[\"user_id\"]))
+        channel_id = _channel_map.get((guild_id, row["user_id"]))
         lines.append(
-            f\"user_id={row['user_id']} joined_at={row['joined_at']} channel_id={channel_id}\"\n        )
+            f"user_id={row['user_id']} joined_at={row['joined_at']} channel_id={channel_id}"
+        )
     if not lines:
-        return [\"no active voice users\"]\n    return lines
+        return ["no active voice users"]
+    return lines
 
 
 def _utc_now() -> str:

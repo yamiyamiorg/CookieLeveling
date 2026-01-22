@@ -28,3 +28,12 @@
 
 ## Phase7
 - Wait for month boundary (or simulate) and confirm season XP resets.
+
+## Debug destructive commands
+- 破壊的コマンドは `DEBUG_MUTATIONS=1` が必要。
+- `/debug grantxp target season lifetime` (max: 10000)
+- `/debug setxp target season lifetime rem_lifetime` (max: 1000000, rem_lifetime=0<=x<1)
+- `/debug setvc target in_vc`
+- `/debug tick minute`
+- `/debug tick rankboard` (未設置なら未設置が返る)
+- `/debug tick roles` (ROLE_*未設定なら理由が返る)

@@ -19,3 +19,13 @@ docker compose up --build
 
 - Database file is stored at `./data/cookieleveling.sqlite` via volume mount.
 - Logs are written to stdout.
+
+## Debug commands (admin only)
+
+- 破壊的コマンドは `DEBUG_MUTATIONS=1` が必要。
+- `/debug grantxp target season lifetime`
+- `/debug setxp target season lifetime rem_lifetime`
+- `/debug setvc target in_vc`
+- `/debug tick minute`
+- `/debug tick rankboard`
+- `/debug tick roles`

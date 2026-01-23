@@ -57,6 +57,24 @@ def level_from_xp(lifetime_xp: int) -> int:
     return max(1, level)
 
 
+def xp_required(level: int) -> int:
+    if level <= 1:
+        return 0
+    return 60 * level * (level - 1)
+
+
+def progress_for_xp(xp: int) -> tuple[int, int, int, float]:
+    level = level_from_xp(xp)
+    curr = xp_required(level)
+    next_req = xp_required(level + 1)
+    if next_req <= curr:
+        progress = 0.0
+    else:
+        progress = (xp - curr) / (next_req - curr)
+    progress = max(0.0, min(1.0, progress))
+    return level, curr, next_req, progress
+
+
 def maybe_monthly_reset(guild_id: int) -> bool:
     global _LAST_RESET_MONTH
     now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))

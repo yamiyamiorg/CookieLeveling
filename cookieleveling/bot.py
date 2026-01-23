@@ -49,6 +49,7 @@ class CookieLevelingBot(discord.Client):
     async def on_ready(self) -> None:
         guild_obj = discord.Object(id=self.config.guild_id)
         self.tree.clear_commands(guild=guild_obj)
+        self.tree.copy_global_to(guild=guild_obj)
         synced = await self.tree.sync(guild=guild_obj)
         _LOGGER.info("synced %d commands for guild %s", len(synced), self.config.guild_id)
         command_names = [command.name for command in self.tree.get_commands(guild=None)]

@@ -31,6 +31,12 @@
 ## Phase7
 - Wait for month boundary (or simulate) and confirm season XP resets.
 
+## Regression
+- Run `/level` and confirm an ephemeral image response is always returned.
+- Toggle `/optout` and confirm the card shows "optout中（XP加算なし）".
+- Verify XP bars render at 0/50/100% without layout breakage.
+- Confirm no rankboard preview commands exist in the command list.
+
 ## Debug destructive commands
 - 破壊的コマンドは `DEBUG_MUTATIONS=1` が必要。
 - `/debug grantxp target season lifetime` (max: 10000)

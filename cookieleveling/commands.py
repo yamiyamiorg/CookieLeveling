@@ -16,6 +16,7 @@ from .command_handlers import (
     handle_debug_vc,
     handle_optin,
     handle_optout,
+    handle_level,
     handle_rankboard_set,
     handle_tick_minute,
     handle_tick_rankboard,
@@ -40,6 +41,27 @@ def setup_commands(bot: discord.Client, config: Config) -> None:
         await _run_command(
             interaction, lambda: handle_optin(config, interaction.user.id)
         )
+
+    @tree.command(name="level", description="Show your level")
+    async def level(interaction: discord.Interaction) -> None:
+        await _defer_ephemeral(interaction)
+        try:
+            rendered, error = await handle_level(config, interaction.user)
+            if error:
+                await _send_ephemeral(interaction, error)
+                return
+            if rendered is None:
+                await _send_ephemeral(interaction, "画像生成に失敗しました。")
+                return
+            await interaction.followup.send(
+                content="",
+                embeds=[],
+                file=rendered,
+                ephemeral=True,
+            )
+        except Exception:
+            _LOGGER.exception("level command failed")
+            await _send_ephemeral(interaction, "エラーが発生しました。")
 
     rankboard_group = app_commands.Group(name="rankboard", description="Rankboard commands")
     debug_group = app_commands.Group(name="debug", description="Debug commands")
@@ -176,7 +198,4 @@ async def _defer_ephemeral(interaction: discord.Interaction) -> None:
 async def _send_ephemeral(
     interaction: discord.Interaction, message: str
 ) -> None:
-    if interaction.response.is_done():
-        await interaction.followup.send(message, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
+    await interaction.followup.send(message, ephemeral=True)

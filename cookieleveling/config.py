@@ -10,7 +10,6 @@ class Config:
     tz: str
     data_dir: str
     db_path: str
-    debug_mutations: bool
     role_season_1: int | None
     role_season_2: int | None
     role_season_3: int | None
@@ -33,7 +32,6 @@ def load_config() -> Config:
     tz = os.getenv("TZ", "Asia/Tokyo")
     data_dir = os.getenv("DATA_DIR", "/opt/CookieLeveling/data")
     db_path = os.getenv("DB_PATH", "/opt/CookieLeveling/data/cookieleveling.sqlite")
-    debug_mutations = os.getenv("DEBUG_MUTATIONS", "0") == "1"
     role_season_1 = _get_optional_int("ROLE_SEASON_1")
     role_season_2 = _get_optional_int("ROLE_SEASON_2")
     role_season_3 = _get_optional_int("ROLE_SEASON_3")
@@ -47,7 +45,6 @@ def load_config() -> Config:
         tz=tz,
         data_dir=data_dir,
         db_path=db_path,
-        debug_mutations=debug_mutations,
         role_season_1=role_season_1,
         role_season_2=role_season_2,
         role_season_3=role_season_3,

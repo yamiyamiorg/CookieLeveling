@@ -69,6 +69,13 @@ def _role_ids(config: Config) -> Optional[dict[int, int]]:
     }
 
 
+def role_sync_block_reason(config: Config) -> str | None:
+    missing = _missing_role_envs(config)
+    if not missing:
+        return None
+    return "ROLE未設定:" + ",".join(missing)
+
+
 def _load_snapshot(row) -> list[int]:
     if row is None or not row["last_snapshot_json"]:
         return []
@@ -77,6 +84,23 @@ def _load_snapshot(row) -> list[int]:
     except json.JSONDecodeError:
         return []
     return [int(x) for x in data]
+
+
+def _missing_role_envs(config: Config) -> list[str]:
+    missing = []
+    if config.role_season_1 is None:
+        missing.append("ROLE_SEASON_1")
+    if config.role_season_2 is None:
+        missing.append("ROLE_SEASON_2")
+    if config.role_season_3 is None:
+        missing.append("ROLE_SEASON_3")
+    if config.role_season_4 is None:
+        missing.append("ROLE_SEASON_4")
+    if config.role_season_5 is None:
+        missing.append("ROLE_SEASON_5")
+    if config.role_season_top10 is None:
+        missing.append("ROLE_SEASON_TOP10")
+    return missing
 
 
 def _desired_role_for_user(user_id: int, snapshot: list[int], role_ids: dict[int, int]) -> int | None:

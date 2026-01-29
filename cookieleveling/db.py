@@ -146,12 +146,20 @@ def fetch_active_voice_users(guild_id: int) -> Iterable[sqlite3.Row]:
     conn = get_connection()
     return conn.execute(
         """
-        SELECT user_id, rem_lifetime
+        SELECT user_id, rem_lifetime, joined_at
         FROM users
         WHERE guild_id = ? AND is_in_vc = 1 AND optout = 0
         """,
         (guild_id,),
     ).fetchall()
+
+
+def fetch_schema_version() -> str:
+    conn = get_connection()
+    row = conn.execute("SELECT schema_version FROM meta LIMIT 1").fetchone()
+    if row is None:
+        return "unknown"
+    return str(row["schema_version"])
 
 
 def update_user_xp(
@@ -180,7 +188,11 @@ def update_user_xp(
 
 
 def grant_xp(
-    guild_id: int, user_id: int, season_inc: int, lifetime_inc: int, last_earned_at: str
+    guild_id: int,
+    user_id: int,
+    season_inc: int,
+    lifetime_inc: int,
+    last_earned_at: Optional[str],
 ) -> None:
     ensure_user(guild_id, user_id)
     conn = get_connection()
@@ -189,7 +201,7 @@ def grant_xp(
         UPDATE users
         SET season_xp = season_xp + ?,
             lifetime_xp = lifetime_xp + ?,
-            last_earned_at = ?
+            last_earned_at = COALESCE(?, last_earned_at)
         WHERE guild_id = ? AND user_id = ?
         """,
         (season_inc, lifetime_inc, last_earned_at, guild_id, user_id),

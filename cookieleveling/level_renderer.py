@@ -195,7 +195,6 @@ def _draw_avatar(
 ) -> None:
     mask = _circle_mask(_AVATAR_SIZE)
     placeholder = _circle_placeholder(_AVATAR_SIZE)
-    avatar_x, avatar_y = position
     if avatar is None:
         image.paste(placeholder, position, mask)
     else:
@@ -203,8 +202,6 @@ def _draw_avatar(
             avatar.convert("RGBA"), (_AVATAR_SIZE, _AVATAR_SIZE)
         )
         image.paste(avatar_image, position, mask)
-    ring = _draw_avatar_ring(_AVATAR_SIZE)
-    image.alpha_composite(ring, dest=(avatar_x, avatar_y))
 
 
 def _draw_stat_block(
@@ -362,22 +359,6 @@ def _emoji_placeholder(size: int) -> Image.Image:
     draw = ImageDraw.Draw(placeholder)
     draw.rectangle((0, 0, size - 1, size - 1), fill=_EMOJI_PLACEHOLDER)
     return placeholder
-
-
-def _draw_avatar_ring(size: int) -> Image.Image:
-    ring = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ring_draw = ImageDraw.Draw(ring)
-    ring_draw.ellipse(
-        (1, 1, size - 2, size - 2),
-        outline=(255, 255, 255, 190),
-        width=3,
-    )
-    ring_draw.ellipse(
-        (2, 2, size - 1, size - 1),
-        outline=(0, 0, 0, 60),
-        width=3,
-    )
-    return ring
 
 
 def _load_font_with_fallbacks(

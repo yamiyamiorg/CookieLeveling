@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 
 import discord
 
-from .db import fetch_voice_states, reset_voice_states, upsert_voice_state
+from .db import reset_voice_states, upsert_voice_state
 
 _channel_map: Dict[Tuple[int, int], int] = {}
 
@@ -44,21 +44,6 @@ def handle_voice_state_update(
 
     if before.channel is not None and after.channel is not None:
         _channel_map[(guild_id, member.id)] = after.channel.id
-
-
-def get_voice_debug_lines(guild_id: int) -> list[str]:
-    rows = fetch_voice_states(guild_id)
-    lines = []
-    for row in rows:
-        if not row["is_in_vc"]:
-            continue
-        channel_id = _channel_map.get((guild_id, row["user_id"]))
-        lines.append(
-            f"user_id={row['user_id']} joined_at={row['joined_at']} channel_id={channel_id}"
-        )
-    if not lines:
-        return ["no active voice users"]
-    return lines
 
 
 def _utc_now() -> str:

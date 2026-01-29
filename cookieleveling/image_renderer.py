@@ -165,7 +165,6 @@ def _draw_panel(
 
     mask = _circle_mask(_AVATAR_SIZE)
     placeholder = _circle_placeholder(_AVATAR_SIZE)
-    ring = _draw_avatar_ring(_AVATAR_SIZE)
     emoji_size = min(40, int(row_height) - 18)
     emoji_placeholder = _emoji_placeholder(emoji_size)
 
@@ -203,7 +202,6 @@ def _draw_panel(
                         avatar.convert("RGBA"), (_AVATAR_SIZE, _AVATAR_SIZE)
                     )
                     image.paste(avatar_image, (avatar_x, avatar_y), mask)
-                image.alpha_composite(ring, dest=(avatar_x, avatar_y))
                 continue
             if key == "name":
                 _draw_name_level_block(
@@ -576,22 +574,6 @@ def _draw_text_with_shadow(
     shadow_y = position[1] + 1
     draw.text((shadow_x, shadow_y), text, fill=_TEXT_SHADOW, font=font)
     draw.text(position, text, fill=fill, font=font)
-
-
-def _draw_avatar_ring(size: int) -> Image.Image:
-    ring = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ring_draw = ImageDraw.Draw(ring)
-    ring_draw.ellipse(
-        (1, 1, size - 2, size - 2),
-        outline=(255, 255, 255, 190),
-        width=3,
-    )
-    ring_draw.ellipse(
-        (2, 2, size - 1, size - 1),
-        outline=(0, 0, 0, 60),
-        width=3,
-    )
-    return ring
 
 
 def _fit_tokens_to_width(

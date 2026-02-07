@@ -10,19 +10,16 @@
 ## Phase3
 - Stay in VC for at least 2 minutes and confirm XP increments.
 - Use `/optout` and verify XP stops; `/optin` resumes.
-- (Optional) `joined_at` を過去に調整して、Lifetime XPが 1.0/0.5/0.25 の係数で増えることを確認する。
+- Confirm lifetime XP increases 1 per minute while in VC.
 
 ## Phase4
-- Ensure ranking order is stable in the rankboard output.
+- Ensure ranking order is stable in the rankboard output (Top20).
 
 ## Phase5
-- Run `/rankboard set` and confirm message placement.
-- Run `/rankboard set` again in another channel and confirm the old message is edited with a move notice.
+- Run `/rankboard set` and confirm two messages are placed (season/lifetime).
+- Run `/rankboard set` again in another channel and confirm the old two messages are edited with a move notice.
 
 ## Phase6
-- Confirm role snapshot table remains one row per guild.
-
-## Phase7
 - Wait for month boundary (or simulate) and confirm season XP resets.
 
 ## Regression

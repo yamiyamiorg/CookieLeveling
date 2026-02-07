@@ -9,11 +9,11 @@ import discord
 from PIL import Image
 
 from .config import Config
-from .db import fetch_guild_settings, upsert_guild_settings
+from .db import fetch_hostboard_settings, upsert_hostboard_settings
 from .display_name_tokens import tokenize_display_name, truncate_tokens
 from .emoji_assets import resolve_emoji_tokens
-from .rankboard_renderer import RenderedRankboard, render_rankboard
-from .ranker import compute_lifetime_top20, compute_top20
+from .host_rankboard_renderer import RenderedHostRankboard, render_host_rankboard
+from .host_ranker import compute_host_top20_monthly, compute_host_top20_total
 from .xp_engine import progress_for_xp
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,164 +22,169 @@ _AVATAR_CACHE_MAX_SIZE = 256
 _AVATAR_CACHE: dict[str, tuple[float, Image.Image]] = {}
 
 
-async def update_rankboard(bot: discord.Client, config: Config) -> bool:
-    settings = fetch_guild_settings(config.guild_id)
+async def update_hostboard(bot: discord.Client, config: Config) -> bool:
+    settings = fetch_hostboard_settings(config.guild_id)
     if settings is None:
-        _LOGGER.warning("rankboard not configured")
+        _LOGGER.warning("hostboard not configured")
         return False
 
-    season_channel_id = settings["season_channel_id"]
-    season_message_id = settings["season_message_id"]
-    lifetime_channel_id = settings["lifetime_channel_id"]
-    lifetime_message_id = settings["lifetime_message_id"]
+    monthly_channel_id = settings["host_monthly_channel_id"]
+    monthly_message_id = settings["host_monthly_message_id"]
+    total_channel_id = settings["host_total_channel_id"]
+    total_message_id = settings["host_total_message_id"]
     if (
-        not season_channel_id
-        or not season_message_id
-        or not lifetime_channel_id
-        or not lifetime_message_id
+        not monthly_channel_id
+        or not monthly_message_id
+        or not total_channel_id
+        or not total_message_id
     ):
-        _LOGGER.warning("rankboard channel/message missing")
+        _LOGGER.warning("hostboard channel/message missing")
         return False
 
-    season_channel = bot.get_channel(season_channel_id)
-    if season_channel is None or not isinstance(season_channel, discord.TextChannel):
-        _LOGGER.warning("rankboard channel not found: %s", season_channel_id)
+    monthly_channel = bot.get_channel(monthly_channel_id)
+    if monthly_channel is None or not isinstance(monthly_channel, discord.TextChannel):
+        _LOGGER.warning("hostboard channel not found: %s", monthly_channel_id)
         return False
 
-    lifetime_channel = bot.get_channel(lifetime_channel_id)
-    if lifetime_channel is None or not isinstance(lifetime_channel, discord.TextChannel):
-        _LOGGER.warning("rankboard channel not found: %s", lifetime_channel_id)
-        return False
-
-    try:
-        season_message = await season_channel.fetch_message(season_message_id)
-    except discord.NotFound:
-        _LOGGER.warning("rankboard message not found: %s", season_message_id)
+    total_channel = bot.get_channel(total_channel_id)
+    if total_channel is None or not isinstance(total_channel, discord.TextChannel):
+        _LOGGER.warning("hostboard channel not found: %s", total_channel_id)
         return False
 
     try:
-        lifetime_message = await lifetime_channel.fetch_message(lifetime_message_id)
+        monthly_message = await monthly_channel.fetch_message(monthly_message_id)
     except discord.NotFound:
-        _LOGGER.warning("rankboard message not found: %s", lifetime_message_id)
+        _LOGGER.warning("hostboard message not found: %s", monthly_message_id)
+        return False
+
+    try:
+        total_message = await total_channel.fetch_message(total_message_id)
+    except discord.NotFound:
+        _LOGGER.warning("hostboard message not found: %s", total_message_id)
         return False
 
     try:
         files = await _render_files(bot, config)
     except Exception:
-        _LOGGER.exception("rankboard render failed")
+        _LOGGER.exception("hostboard render failed")
         return False
 
-    season_ok = False
-    lifetime_ok = False
+    monthly_ok = False
+    total_ok = False
     try:
         try:
-            await season_message.edit(
+            await monthly_message.edit(
                 content="",
                 embeds=[],
-                attachments=[files.season_file],
+                attachments=[files.monthly_file],
             )
-            season_ok = True
-            _LOGGER.info("rankboard season updated")
+            monthly_ok = True
+            _LOGGER.info("hostboard monthly updated")
         except Exception:
-            _LOGGER.exception("rankboard season update failed")
+            _LOGGER.exception("hostboard monthly update failed")
 
         try:
-            await lifetime_message.edit(
+            await total_message.edit(
                 content="",
                 embeds=[],
-                attachments=[files.lifetime_file],
+                attachments=[files.total_file],
             )
-            lifetime_ok = True
-            _LOGGER.info("rankboard lifetime updated")
+            total_ok = True
+            _LOGGER.info("hostboard total updated")
         except Exception:
-            _LOGGER.exception("rankboard lifetime update failed")
+            _LOGGER.exception("hostboard total update failed")
     finally:
         files.cleanup()
 
-    return season_ok and lifetime_ok
+    return monthly_ok and total_ok
 
 
-async def send_rankboard_messages(
+async def send_hostboard_messages(
     bot: discord.Client, config: Config, channel: discord.TextChannel
 ) -> tuple[discord.Message, discord.Message]:
-    lifetime_message: discord.Message | None = None
+    total_message: discord.Message | None = None
+    monthly_message: discord.Message | None = None
     try:
         files = await _render_files(bot, config)
         try:
-            lifetime_message = await channel.send(
-                content="",
-                files=[files.lifetime_file],
+            total_message = await channel.send(content="", files=[files.total_file])
+            monthly_message = await channel.send(
+                content="", files=[files.monthly_file]
             )
-            season_message = await channel.send(
-                content="",
-                files=[files.season_file],
-            )
-            return lifetime_message, season_message
+            return monthly_message, total_message
         finally:
             files.cleanup()
     except Exception:
-        _LOGGER.exception("rankboard send failed: channel_id=%s", channel.id)
-        if lifetime_message is not None:
+        _LOGGER.exception("hostboard send failed: channel_id=%s", channel.id)
+        if monthly_message is not None:
             try:
-                await lifetime_message.delete()
+                await monthly_message.delete()
             except Exception:
-                _LOGGER.warning("failed to delete lifetime rankboard message")
+                _LOGGER.warning("failed to delete hostboard monthly message")
+        if total_message is not None:
+            try:
+                await total_message.delete()
+            except Exception:
+                _LOGGER.warning("failed to delete hostboard total message")
         raise
 
 
-async def set_rankboard(
+async def set_hostboard(
     bot: discord.Client, config: Config, channel: discord.abc.GuildChannel
 ) -> tuple[bool, str]:
-    target_channel = _normalize_rankboard_channel(channel)
+    target_channel = _normalize_channel(channel)
     if target_channel is None:
         return False, "このチャンネルでは設置できません。"
 
-    settings = fetch_guild_settings(config.guild_id)
+    settings = fetch_hostboard_settings(config.guild_id)
     if settings:
-        if settings["season_channel_id"] and settings["season_message_id"]:
-            await _mark_rankboard_moved(
+        if settings["host_monthly_channel_id"] and settings["host_monthly_message_id"]:
+            await _mark_moved(
                 bot,
-                settings["season_channel_id"],
-                settings["season_message_id"],
+                settings["host_monthly_channel_id"],
+                settings["host_monthly_message_id"],
                 target_channel.id,
             )
-        if settings["lifetime_channel_id"] and settings["lifetime_message_id"]:
-            await _mark_rankboard_moved(
+        if settings["host_total_channel_id"] and settings["host_total_message_id"]:
+            await _mark_moved(
                 bot,
-                settings["lifetime_channel_id"],
-                settings["lifetime_message_id"],
+                settings["host_total_channel_id"],
+                settings["host_total_message_id"],
                 target_channel.id,
             )
 
     try:
-        lifetime_message, season_message = await send_rankboard_messages(
+        monthly_message, total_message = await send_hostboard_messages(
             bot, config, target_channel
         )
     except Exception:
         return False, "設置に失敗しました。"
-    upsert_guild_settings(
+
+    upsert_hostboard_settings(
         config.guild_id,
-        season_channel_id=target_channel.id,
-        season_message_id=season_message.id,
-        lifetime_channel_id=target_channel.id,
-        lifetime_message_id=lifetime_message.id,
+        host_monthly_channel_id=target_channel.id,
+        host_monthly_message_id=monthly_message.id,
+        host_total_channel_id=target_channel.id,
+        host_total_message_id=total_message.id,
     )
     return True, f"<#{target_channel.id}> に設置しました。"
 
 
-async def _render_files(bot: discord.Client, config: Config) -> RenderedRankboard:
+async def _render_files(
+    bot: discord.Client, config: Config
+) -> RenderedHostRankboard:
     guild = bot.get_guild(config.guild_id)
     if guild is None:
-        raise RuntimeError("rankboardの描画に必要なGuildが見つかりません。")
+        raise RuntimeError("hostboardの描画に必要なGuildが見つかりません。")
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=10)
     ) as session:
-        season_entries = await _prepare_season_entries(guild, session)
-        lifetime_entries = await _prepare_lifetime_entries(guild, session)
-    return await render_rankboard(season_entries, lifetime_entries)
+        monthly_entries = await _prepare_monthly_entries(guild, session)
+        total_entries = await _prepare_total_entries(guild, session)
+    return await render_host_rankboard(monthly_entries, total_entries)
 
 
-def _normalize_rankboard_channel(
+def _normalize_channel(
     channel: discord.abc.GuildChannel,
 ) -> discord.TextChannel | None:
     if isinstance(channel, discord.Thread):
@@ -189,7 +194,7 @@ def _normalize_rankboard_channel(
     return None
 
 
-async def _mark_rankboard_moved(
+async def _mark_moved(
     bot: discord.Client, channel_id: int, message_id: int, new_channel_id: int
 ) -> None:
     channel = bot.get_channel(channel_id)
@@ -206,22 +211,22 @@ async def _mark_rankboard_moved(
     )
 
 
-async def _prepare_season_entries(
+async def _prepare_monthly_entries(
     guild: discord.Guild, session: aiohttp.ClientSession
 ) -> list[dict]:
     entries: list[dict] = []
-    for row in compute_top20(guild.id):
+    for row in compute_host_top20_monthly(guild.id):
         user_id = row["user_id"]
         member = await _resolve_member(guild, user_id)
         name_tokens = await _prepare_name_tokens(member, user_id, session)
-        level, _, _, progress = progress_for_xp(row["season_xp"])
+        level, _, _, progress = progress_for_xp(row["monthly_xp"])
         entries.append(
             {
                 "user_id": user_id,
                 "name": member.display_name if member else None,
                 "name_tokens": name_tokens,
-                "season_xp": row["season_xp"],
                 "level": level,
+                "monthly_xp": row["monthly_xp"],
                 "xp_progress": progress,
                 "avatar": await _fetch_avatar(member, session),
             }
@@ -229,22 +234,22 @@ async def _prepare_season_entries(
     return entries
 
 
-async def _prepare_lifetime_entries(
+async def _prepare_total_entries(
     guild: discord.Guild, session: aiohttp.ClientSession
 ) -> list[dict]:
     entries: list[dict] = []
-    for row in compute_lifetime_top20(guild.id):
+    for row in compute_host_top20_total(guild.id):
         user_id = row["user_id"]
         member = await _resolve_member(guild, user_id)
         name_tokens = await _prepare_name_tokens(member, user_id, session)
-        level, _, _, progress = progress_for_xp(row["lifetime_xp"])
+        level, _, _, progress = progress_for_xp(row["total_xp"])
         entries.append(
             {
                 "user_id": user_id,
                 "name": member.display_name if member else None,
                 "name_tokens": name_tokens,
                 "level": level,
-                "lifetime_xp": row["lifetime_xp"],
+                "total_xp": row["total_xp"],
                 "xp_progress": progress,
                 "avatar": await _fetch_avatar(member, session),
             }

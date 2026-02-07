@@ -117,7 +117,7 @@ def render_level_card(
     stats_top = body_top + _NAME_LINE_HEIGHT + 12
     stats_top = _draw_stat_block(
         draw,
-        label="今期",
+        label="月間",
         stats=season_stats,
         left=right_x,
         top=stats_top,

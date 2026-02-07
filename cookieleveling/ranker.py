@@ -4,21 +4,21 @@ from datetime import datetime, timezone
 from .db import fetch_lifetime_candidates, fetch_rank_candidates
 
 
-def compute_top10(guild_id: int) -> list[dict]:
+def compute_top20(guild_id: int) -> list[dict]:
     now = datetime.now(timezone.utc)
     candidates = [
         _rank_entry(row, now) for row in fetch_rank_candidates(guild_id) if not row["optout"]
     ]
     candidates.sort(key=_sort_key)
-    return candidates[:10]
+    return candidates[:20]
 
 
-def compute_lifetime_top10(guild_id: int) -> list[dict]:
+def compute_lifetime_top20(guild_id: int) -> list[dict]:
     candidates = [
         _lifetime_entry(row) for row in fetch_lifetime_candidates(guild_id) if not row["optout"]
     ]
     candidates.sort(key=_lifetime_sort_key)
-    return candidates[:10]
+    return candidates[:20]
 
 
 def _rank_entry(row, now: datetime) -> dict:

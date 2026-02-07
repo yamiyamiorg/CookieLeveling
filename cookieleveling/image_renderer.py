@@ -18,6 +18,7 @@ _TABLE_TOP_GAP = 8
 _ROW_HEIGHT = 120
 _AVATAR_SIZE = 76
 _ROWS_PER_COLUMN = 10
+_COLUMNS_PER_PANEL = 2
 
 _BACKGROUND = (255, 243, 247)
 _PANEL_FILL = (255, 255, 255)
@@ -63,11 +64,18 @@ _XP_BAR_SIDE_PADDING = 8
 
 
 def render_rankboard_image(
-    season_entries: Iterable[dict],
-    lifetime_entries: Iterable[dict],
+    entries: Iterable[dict],
     output_path: str,
+    *,
+    title: str,
+    background: tuple[int, int, int] | None = None,
+    header_fill: tuple[int, int, int] | None = None,
+    xp_bar_fill: tuple[int, int, int] | tuple[int, int, int, int] | None = None,
 ) -> None:
-    image = Image.new("RGBA", _CANVAS_SIZE, (*_BACKGROUND, 255))
+    base = background or _BACKGROUND
+    header_fill = header_fill or _HEADER_PINK
+    xp_bar_fill = xp_bar_fill or _XP_BAR_FILL
+    image = Image.new("RGBA", _CANVAS_SIZE, (*base, 255))
     draw = ImageDraw.Draw(image)
     title_font = _load_font(_TITLE_FONT_SIZE)
     header_font = _load_font(_HEADER_FONT_SIZE)
@@ -75,44 +83,25 @@ def render_rankboard_image(
     rank_font = _load_font(_RANK_FONT_SIZE, prefer_bold=True)
     level_font = _load_font(_LEVEL_FONT_SIZE, prefer_bold=True)
 
-    panel_width = int((_CANVAS_SIZE[0] - _OUTER_MARGIN * 2 - _PANEL_GAP) / 2)
-    panel_height = _CANVAS_SIZE[1] - _OUTER_MARGIN * 2
-    left_panel = (
+    panel_rect = (
         _OUTER_MARGIN,
         _OUTER_MARGIN,
-        _OUTER_MARGIN + panel_width,
-        _OUTER_MARGIN + panel_height,
+        _CANVAS_SIZE[0] - _OUTER_MARGIN,
+        _CANVAS_SIZE[1] - _OUTER_MARGIN,
     )
-    right_panel = (
-        left_panel[2] + _PANEL_GAP,
-        _OUTER_MARGIN,
-        left_panel[2] + _PANEL_GAP + panel_width,
-        _OUTER_MARGIN + panel_height,
-    )
-
     _draw_panel(
         image,
         draw,
-        left_panel,
-        season_entries,
+        panel_rect,
+        entries,
         name_font,
         rank_font,
         level_font,
         title_font=title_font,
         header_font=header_font,
-        title="今期ランキング Top10",
-    )
-    _draw_panel(
-        image,
-        draw,
-        right_panel,
-        lifetime_entries,
-        name_font,
-        rank_font,
-        level_font,
-        title_font=title_font,
-        header_font=header_font,
-        title="累計ランキング Top10",
+        title=title,
+        header_fill=header_fill,
+        xp_bar_fill=xp_bar_fill,
     )
     image.convert("RGB").save(output_path, format="PNG")
 
@@ -129,9 +118,11 @@ def _draw_panel(
     title_font: ImageFont.ImageFont,
     header_font: ImageFont.ImageFont,
     title: str,
+    header_fill: tuple[int, int, int],
+    xp_bar_fill: tuple[int, int, int] | tuple[int, int, int, int],
 ) -> None:
     _draw_panel_frame(image, panel_rect)
-    entries = _pad_entries(list(entries), total=10)
+    entries = _pad_entries(list(entries), total=_ROWS_PER_COLUMN * _COLUMNS_PER_PANEL)
     content_left = panel_rect[0] + _PANEL_PADDING
     content_top = panel_rect[1] + _PANEL_PADDING
     content_bottom = panel_rect[3] - _PANEL_PADDING
@@ -147,9 +138,17 @@ def _draw_panel(
         row_height = (available_height - (_ROWS_PER_COLUMN - 1) * row_gap) / (
             _ROWS_PER_COLUMN
         )
-    column_width = content_width
-    left_x = content_left
-    column_set = _position_columns(_panel_columns(column_width), left=left_x)
+    column_gap = float(_PANEL_GAP)
+    column_width = int(
+        (content_width - column_gap * (_COLUMNS_PER_PANEL - 1)) / _COLUMNS_PER_PANEL
+    )
+    column_sets = [
+        _position_columns(
+            _panel_columns(column_width),
+            left=int(content_left + idx * (column_width + column_gap)),
+        )
+        for idx in range(_COLUMNS_PER_PANEL)
+    ]
 
     _draw_header_band(
         draw,
@@ -157,7 +156,7 @@ def _draw_panel(
         header_font,
         title=title,
         timestamp=_format_jst_timestamp(),
-        fill=_HEADER_PINK,
+        fill=header_fill,
         left=content_left,
         top=content_top,
         width=content_width,
@@ -169,7 +168,10 @@ def _draw_panel(
     emoji_placeholder = _emoji_placeholder(emoji_size)
 
     for idx, entry in enumerate(entries, start=1):
-        row_top = table_top + (idx - 1) * (row_height + row_gap)
+        col_idx = (idx - 1) // _ROWS_PER_COLUMN
+        row_idx = (idx - 1) % _ROWS_PER_COLUMN
+        row_top = table_top + row_idx * (row_height + row_gap)
+        left_x = int(content_left + col_idx * (column_width + column_gap))
         card_rect = _row_card_rect(left_x, column_width, row_top, row_height)
         _draw_row_card(image, card_rect)
 
@@ -178,6 +180,7 @@ def _draw_panel(
         rank_text = str(idx)
         level_value = entry.get("level")
         progress = entry.get("xp_progress")
+        column_set = column_sets[col_idx]
         for col in column_set:
             key = col["key"]
             if key == "rank":
@@ -217,7 +220,7 @@ def _draw_panel(
                     emoji_size,
                     emoji_placeholder,
                 )
-                _draw_xp_bar(draw, col, card_rect, progress)
+                _draw_xp_bar(draw, col, card_rect, progress, xp_bar_fill)
                 continue
 
 
@@ -503,6 +506,7 @@ def _draw_xp_bar(
     col: dict,
     card_rect: tuple[int, int, int, int],
     progress: float | None,
+    bar_fill: tuple[int, int, int] | tuple[int, int, int, int],
 ) -> None:
     if progress is None:
         return
@@ -525,10 +529,11 @@ def _draw_xp_bar(
         return
     fill_right = bar_left + fill_width
     fill_radius = int(min(radius, fill_width / 2))
+    fill_color = bar_fill if len(bar_fill) == 4 else (*bar_fill, 255)
     draw.rounded_rectangle(
         (bar_left, bar_top, fill_right, bar_bottom),
         radius=fill_radius,
-        fill=_XP_BAR_FILL,
+        fill=fill_color,
     )
 
 

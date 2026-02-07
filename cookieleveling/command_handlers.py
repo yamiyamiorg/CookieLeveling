@@ -14,6 +14,7 @@ from .db import (
     set_optout,
 )
 from .rankboard_publisher import set_rankboard
+from .host_rankboard_publisher import set_hostboard
 from .xp_engine import progress_for_xp
 from .display_name_tokens import tokenize_display_name, truncate_tokens
 from .emoji_assets import resolve_emoji_tokens
@@ -40,6 +41,19 @@ async def handle_rankboard_set(
     if channel is None:
         return "チャンネル情報が取得できません。"
     ok, message = await set_rankboard(bot, config, channel)
+    if ok:
+        return message
+    return message
+
+
+async def handle_hostboard_set(
+    bot: discord.Client,
+    config: Config,
+    channel: discord.abc.GuildChannel | None,
+) -> str:
+    if channel is None:
+        return "チャンネル情報が取得できません。"
+    ok, message = await set_hostboard(bot, config, channel)
     if ok:
         return message
     return message

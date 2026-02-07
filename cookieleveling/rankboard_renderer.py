@@ -8,9 +8,14 @@ import discord
 
 from .image_renderer import render_rankboard_image
 
+_LIFETIME_BACKGROUND = (255, 242, 204)
+_LIFETIME_XP_BAR_FILL = (244, 180, 0)
+
+
 @dataclass
 class RenderedRankboard:
-    files: list[discord.File]
+    season_file: discord.File
+    lifetime_file: discord.File
     temp_paths: list[str]
 
     def cleanup(self) -> None:
@@ -24,16 +29,27 @@ class RenderedRankboard:
 async def render_rankboard(
     season_entries: list[dict], lifetime_entries: list[dict]
 ) -> RenderedRankboard:
-    rankboard_path = _make_temp_path("rankboard")
+    season_path = _make_temp_path("season_board")
+    lifetime_path = _make_temp_path("lifetime_board")
 
-    render_rankboard_image(season_entries, lifetime_entries, rankboard_path)
+    render_rankboard_image(
+        season_entries,
+        season_path,
+        title="月間 通話ランキングTOP20",
+    )
+    render_rankboard_image(
+        lifetime_entries,
+        lifetime_path,
+        title="累計 通話ランキングTOP20",
+        background=_LIFETIME_BACKGROUND,
+        header_fill=_LIFETIME_BACKGROUND,
+        xp_bar_fill=_LIFETIME_XP_BAR_FILL,
+    )
 
-    files = [
-        discord.File(rankboard_path, filename="rankboard.png"),
-    ]
     return RenderedRankboard(
-        files=files,
-        temp_paths=[rankboard_path],
+        season_file=discord.File(season_path, filename="season_board.png"),
+        lifetime_file=discord.File(lifetime_path, filename="lifetime_board.png"),
+        temp_paths=[season_path, lifetime_path],
     )
 
 

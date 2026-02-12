@@ -12,6 +12,7 @@ from cookieleveling.config.config import Config
 from cookieleveling.db import (
     fetch_hostboard_settings,
     fetch_member_caches,
+    fetch_user_flags,
     upsert_hostboard_settings,
 )
 from cookieleveling.rendering.name_tokens import tokenize_display_name, truncate_tokens
@@ -32,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 _AVATAR_CACHE_TTL_SECONDS = 3600
 _AVATAR_CACHE_MAX_SIZE = 256
 _AVATAR_CACHE: dict[str, tuple[float, Image.Image]] = {}
-_RANK_CANDIDATE_LIMIT = 80
+_RANK_CANDIDATE_LIMIT = 20
 
 
 async def update_hostboard(bot: discord.Client, config: Config) -> bool:
@@ -355,21 +356,25 @@ async def _build_host_entries(
     await refresh_member_cache(guild, user_ids)
     caches = fetch_member_caches(guild.id, user_ids)
 
-    filtered: list[tuple[dict, str, str]] = []
+    filtered: list[tuple[dict, str, str | None]] = []
     for row in rows:
+        flags = fetch_user_flags(guild.id, row["user_id"])
         cache = caches.get(row["user_id"])
-        if cache is None:
-            continue
-        if cache["member_state"] != 1:
-            continue
-        display_name = (cache["display_name_cache"] or "").strip()
-        avatar_url = (cache["avatar_url_cache"] or "").strip()
-        if not display_name or not avatar_url:
-            continue
+        display_name = ""
+        avatar_url: str | None = None
+        if cache is not None:
+            display_name = (cache["display_name_cache"] or "").strip()
+            avatar_url = (cache["avatar_url_cache"] or "").strip() or None
+        if not display_name and flags is not None:
+            display_name = (flags["display_name"] or "").strip()
+        if avatar_url is None and flags is not None:
+            avatar_url = (flags["avatar_url"] or "").strip() or None
+        if not display_name:
+            display_name = "Member"
         filtered.append((row, display_name, avatar_url))
 
     entries: list[dict] = []
-    for row, display_name, avatar_url in filtered[:20]:
+    for row, display_name, avatar_url in filtered:
         name_tokens = await _prepare_name_tokens(display_name, session)
         level, _, _, progress = progress_for_xp(row[xp_key])
         entries.append(

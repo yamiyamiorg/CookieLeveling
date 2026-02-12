@@ -1,7 +1,11 @@
 import sqlite3
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
+from cookieleveling.domain.period import normalize_week_key
+
 from .core import get_connection
+from .period import ensure_period_state
 from .users import ensure_user
 
 
@@ -195,12 +199,17 @@ def update_host_last_seen(
 def ensure_host_user(guild_id: int, user_id: int) -> None:
     ensure_user(guild_id, user_id)
     conn = get_connection()
+    week_key, month_key = ensure_period_state(guild_id)
     conn.execute(
         """
-        INSERT OR IGNORE INTO host_stats (guild_id, user_id)
-        VALUES (?, ?)
+        INSERT OR IGNORE INTO host_xp (
+            guild_id,
+            user_id,
+            monthly_key,
+            weekly_key
+        ) VALUES (?, ?, ?, ?)
         """,
-        (guild_id, user_id),
+        (guild_id, user_id, month_key, week_key),
     )
     conn.commit()
 
@@ -215,38 +224,77 @@ def add_host_xp(
 ) -> None:
     ensure_host_user(guild_id, user_id)
     conn = get_connection()
+    _week_key, month_key = ensure_period_state(guild_id)
     conn.execute(
         """
-        UPDATE host_stats
-        SET monthly_xp = monthly_xp + ?,
+        UPDATE host_xp
+        SET monthly_xp = CASE
+                WHEN monthly_key = ? THEN monthly_xp + ?
+                ELSE ?
+            END,
+            monthly_key = ?,
             total_xp = total_xp + ?,
             last_earned_at = ?
         WHERE guild_id = ? AND user_id = ?
         """,
-        (monthly_inc, total_inc, last_earned_at, guild_id, user_id),
+        (
+            month_key,
+            monthly_inc,
+            monthly_inc,
+            month_key,
+            total_inc,
+            last_earned_at,
+            guild_id,
+            user_id,
+        ),
     )
     conn.commit()
 
 
 def add_host_weekly_xp(
-    *,
     guild_id: int,
-    week_key: str,
     user_id: int,
     weekly_inc: int,
-    updated_at: str,
+    week_key: Optional[str] = None,
+    updated_at: str = "",
 ) -> None:
+    ensure_host_user(guild_id, user_id)
     conn = get_connection()
+    current_week_key, _month_key = ensure_period_state(guild_id)
+    target_week_key = normalize_week_key(week_key) or current_week_key
+    if not updated_at:
+        updated_at = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
-        INSERT INTO host_weekly_xp (guild_id, week_key, user_id, weekly_xp, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        UPDATE host_xp
+        SET weekly_xp = weekly_xp + ?,
+            weekly_key = ?,
+            last_earned_at = COALESCE(?, last_earned_at)
+        WHERE guild_id = ? AND user_id = ?
+        """,
+        (
+            weekly_inc,
+            target_week_key,
+            updated_at,
+            guild_id,
+            user_id,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO host_weekly_xp (
+            guild_id,
+            week_key,
+            user_id,
+            weekly_xp,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(guild_id, week_key, user_id)
         DO UPDATE SET
             weekly_xp = host_weekly_xp.weekly_xp + excluded.weekly_xp,
             updated_at = excluded.updated_at
         """,
-        (guild_id, week_key, user_id, weekly_inc, updated_at),
+        (guild_id, target_week_key, user_id, weekly_inc, updated_at),
     )
     conn.commit()
 
@@ -254,93 +302,133 @@ def add_host_weekly_xp(
 def increment_host_session_counts(guild_id: int, user_id: int) -> None:
     ensure_host_user(guild_id, user_id)
     conn = get_connection()
+    current_week_key, current_month_key = ensure_period_state(guild_id)
     conn.execute(
         """
-        UPDATE host_stats
-        SET monthly_sessions = monthly_sessions + 1,
+        UPDATE host_xp
+        SET monthly_sessions = CASE
+                WHEN monthly_key = ? THEN monthly_sessions + 1
+                ELSE 1
+            END,
+            monthly_key = ?,
+            weekly_sessions = CASE
+                WHEN weekly_key = ? THEN weekly_sessions + 1
+                ELSE 1
+            END,
+            weekly_key = ?,
             total_sessions = total_sessions + 1
         WHERE guild_id = ? AND user_id = ?
         """,
-        (guild_id, user_id),
+        (
+            current_month_key,
+            current_month_key,
+            current_week_key,
+            current_week_key,
+            guild_id,
+            user_id,
+        ),
     )
     conn.commit()
 
 
-def fetch_host_top20_monthly(guild_id: int) -> Iterable[sqlite3.Row]:
+def fetch_host_top20_monthly(guild_id: int, limit: int = 20) -> Iterable[sqlite3.Row]:
     conn = get_connection()
+    _week_key, month_key = ensure_period_state(guild_id)
     return conn.execute(
         """
-        SELECT hs.user_id, hs.monthly_xp, hs.last_earned_at
-        FROM host_stats hs
+        SELECT hx.user_id, hx.monthly_xp, hx.last_earned_at
+        FROM host_xp hx
         INNER JOIN guild_members gm
-          ON gm.guild_id = hs.guild_id
-         AND gm.user_id = hs.user_id
+          ON gm.guild_id = hx.guild_id
+         AND gm.user_id = hx.user_id
          AND gm.member_state = 1
-        LEFT JOIN users u
-          ON u.guild_id = hs.guild_id AND u.user_id = hs.user_id
-        WHERE hs.guild_id = ?
-          AND hs.monthly_xp > 0
-          AND COALESCE(u.is_excluded, 0) = 0
-          AND COALESCE(u.rank_visible, 1) = 1
+        INNER JOIN user_flags uf
+          ON uf.guild_id = hx.guild_id
+         AND uf.user_id = hx.user_id
+        WHERE hx.guild_id = ?
+          AND hx.monthly_key = ?
+          AND hx.monthly_xp > 0
+          AND COALESCE(uf.optout, 0) = 0
+          AND COALESCE(uf.is_excluded, 0) = 0
+          AND COALESCE(uf.rank_visible, 1) = 1
+          AND uf.left_guild_at IS NULL
+        ORDER BY hx.monthly_xp DESC, hx.last_earned_at ASC, hx.user_id ASC
+        LIMIT ?
         """,
-        (guild_id,),
+        (guild_id, month_key, limit),
     ).fetchall()
 
 
-def fetch_host_top20_total(guild_id: int) -> Iterable[sqlite3.Row]:
+def fetch_host_top20_total(guild_id: int, limit: int = 20) -> Iterable[sqlite3.Row]:
     conn = get_connection()
+    ensure_period_state(guild_id)
     return conn.execute(
         """
-        SELECT hs.user_id, hs.total_xp, hs.last_earned_at
-        FROM host_stats hs
+        SELECT hx.user_id, hx.total_xp, hx.last_earned_at
+        FROM host_xp hx
         INNER JOIN guild_members gm
-          ON gm.guild_id = hs.guild_id
-         AND gm.user_id = hs.user_id
+          ON gm.guild_id = hx.guild_id
+         AND gm.user_id = hx.user_id
          AND gm.member_state = 1
-        LEFT JOIN users u
-          ON u.guild_id = hs.guild_id AND u.user_id = hs.user_id
-        WHERE hs.guild_id = ?
-          AND hs.total_xp > 0
-          AND COALESCE(u.is_excluded, 0) = 0
-          AND COALESCE(u.rank_visible, 1) = 1
+        INNER JOIN user_flags uf
+          ON uf.guild_id = hx.guild_id
+         AND uf.user_id = hx.user_id
+        WHERE hx.guild_id = ?
+          AND hx.total_xp > 0
+          AND COALESCE(uf.optout, 0) = 0
+          AND COALESCE(uf.is_excluded, 0) = 0
+          AND COALESCE(uf.rank_visible, 1) = 1
+          AND uf.left_guild_at IS NULL
+        ORDER BY hx.total_xp DESC, hx.last_earned_at ASC, hx.user_id ASC
+        LIMIT ?
         """,
-        (guild_id,),
+        (guild_id, limit),
     ).fetchall()
 
 
-def fetch_host_top20_weekly(
-    guild_id: int, week_key: str
-) -> Iterable[sqlite3.Row]:
+def fetch_host_top20_weekly(guild_id: int, limit: int = 20) -> Iterable[sqlite3.Row]:
     conn = get_connection()
+    current_week_key, _month_key = ensure_period_state(guild_id)
     return conn.execute(
         """
-        SELECT hw.user_id, hw.weekly_xp, hw.updated_at
+        SELECT
+            hw.user_id,
+            SUM(hw.weekly_xp) AS weekly_xp,
+            MAX(hw.updated_at) AS updated_at
         FROM host_weekly_xp hw
         INNER JOIN guild_members gm
           ON gm.guild_id = hw.guild_id
          AND gm.user_id = hw.user_id
          AND gm.member_state = 1
-        LEFT JOIN users u
-          ON u.guild_id = hw.guild_id AND u.user_id = hw.user_id
+        INNER JOIN user_flags uf
+          ON uf.guild_id = hw.guild_id
+         AND uf.user_id = hw.user_id
         WHERE hw.guild_id = ?
           AND hw.week_key = ?
-          AND hw.weekly_xp > 0
-          AND COALESCE(u.is_excluded, 0) = 0
-          AND COALESCE(u.rank_visible, 1) = 1
+          AND COALESCE(uf.optout, 0) = 0
+          AND COALESCE(uf.is_excluded, 0) = 0
+          AND COALESCE(uf.rank_visible, 1) = 1
+          AND uf.left_guild_at IS NULL
+        GROUP BY hw.user_id
+        HAVING SUM(hw.weekly_xp) > 0
+        ORDER BY SUM(hw.weekly_xp) DESC, MAX(hw.updated_at) ASC, hw.user_id ASC
+        LIMIT ?
         """,
-        (guild_id, week_key),
+        (guild_id, current_week_key, limit),
     ).fetchall()
 
 
 def reset_host_monthly(guild_id: int) -> None:
     conn = get_connection()
+    _week_key, month_key = ensure_period_state(guild_id)
     conn.execute(
         """
-        UPDATE host_stats
+        UPDATE host_xp
         SET monthly_xp = 0,
-            monthly_sessions = 0
+            monthly_sessions = 0,
+            monthly_key = ?
         WHERE guild_id = ?
         """,
-        (guild_id,),
+        (month_key, guild_id),
     )
     conn.commit()

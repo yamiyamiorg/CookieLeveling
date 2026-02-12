@@ -22,7 +22,7 @@ from cookieleveling.db import (
     update_host_last_seen,
     upsert_host_session,
 )
-from cookieleveling.domain.week import current_week_key
+from cookieleveling.db import ensure_period_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def snapshot_host_sessions(guild: discord.Guild) -> None:
 def tick_host_xp(guild: discord.Guild) -> int:
     _ensure_targets_loaded(guild)
     now = datetime.now(timezone.utc)
-    week_key = current_week_key()
+    ensure_period_state(guild.id)
     sessions = {
         row["channel_id"]: row for row in fetch_host_sessions(guild.id)
     }
@@ -191,7 +191,6 @@ def tick_host_xp(guild: discord.Guild) -> int:
         )
         add_host_weekly_xp(
             guild_id=guild.id,
-            week_key=week_key,
             user_id=host_user_id,
             weekly_inc=effective_count,
             updated_at=now.isoformat(),
@@ -264,7 +263,7 @@ def _is_excluded_user(guild_id: int, user_id: int) -> bool:
         return False
     if row["left_guild_at"]:
         clear_user_left(guild_id, user_id)
-    if row["deleted_at"]:
+    if row["optout"]:
         return True
     return bool(row["is_excluded"])
 

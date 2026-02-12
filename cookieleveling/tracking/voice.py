@@ -54,8 +54,6 @@ def _should_track_user(guild_id: int, user_id: int) -> bool:
         clear_user_left(guild_id, user_id)
     if row["is_excluded"]:
         return False
-    if row["deleted_at"]:
-        return False
     return True
 
 

@@ -15,25 +15,23 @@ from cookieleveling.db import (
     fetch_weekly_candidates,
     mark_user_left,
 )
-from cookieleveling.domain.week import current_week_key
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _collect_candidate_user_ids(guild: discord.Guild) -> list[int]:
     user_ids: set[int] = set()
-    week_key = current_week_key()
-    for row in fetch_rank_candidates(guild.id):
+    for row in fetch_rank_candidates(guild.id, limit=5000):
         user_ids.add(row["user_id"])
-    for row in fetch_weekly_candidates(guild.id, week_key):
+    for row in fetch_weekly_candidates(guild.id, limit=5000):
         user_ids.add(row["user_id"])
-    for row in fetch_lifetime_candidates(guild.id):
+    for row in fetch_lifetime_candidates(guild.id, limit=5000):
         user_ids.add(row["user_id"])
-    for row in fetch_host_top20_weekly(guild.id, week_key):
+    for row in fetch_host_top20_weekly(guild.id, limit=5000):
         user_ids.add(row["user_id"])
-    for row in fetch_host_top20_monthly(guild.id):
+    for row in fetch_host_top20_monthly(guild.id, limit=5000):
         user_ids.add(row["user_id"])
-    for row in fetch_host_top20_total(guild.id):
+    for row in fetch_host_top20_total(guild.id, limit=5000):
         user_ids.add(row["user_id"])
     return sorted(user_ids)
 

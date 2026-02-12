@@ -5,7 +5,7 @@ from discord import app_commands
 
 from cookieleveling.commands.commands import setup_commands
 from cookieleveling.config.config import Config, EXCLUDED_USER_IDS
-from cookieleveling.db import init_db, sync_excluded_users
+from cookieleveling.db import fetch_schema_version, init_db, sync_excluded_users
 from cookieleveling.publishing.rankboard import update_rankboard
 from cookieleveling.scheduler.scheduler import (
     start_hourly_scheduler,
@@ -65,6 +65,7 @@ class CookieLevelingBot(discord.Client):
 
     async def setup_hook(self) -> None:
         init_db(self.config)
+        _LOGGER.info("db schema_version=%s", fetch_schema_version())
         sync_excluded_users(self.config.guild_id, EXCLUDED_USER_IDS)
         setup_commands(self, self.config)
         self._minute_task = start_minute_scheduler(self, self.config)

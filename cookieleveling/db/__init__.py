@@ -1,6 +1,12 @@
 """db package."""
 
-from .core import fetch_schema_version, get_connection, init_db
+from .core import (
+    fetch_schema_version,
+    get_connection,
+    get_meta_value,
+    init_db,
+    set_meta_value,
+)
 from .guild_settings import (
     fetch_guild_settings,
     fetch_hostboard_settings,
@@ -36,6 +42,7 @@ from .guild_members import (
     update_member_cache,
     upsert_guild_members,
 )
+from .period import ensure_period_state, ensure_weekly_reset, fetch_period_state
 from .users import (
     add_user_weekly_xp,
     apply_voice_snapshot,
@@ -62,6 +69,8 @@ from .users import (
     set_xp,
     sync_excluded_users,
     update_user_xp,
+    upsert_user_profile,
+    upsert_user_profiles,
     upsert_voice_state,
 )
 from .weekly import prune_weekly_xp
@@ -70,6 +79,8 @@ __all__ = [
     "fetch_schema_version",
     "get_connection",
     "init_db",
+    "get_meta_value",
+    "set_meta_value",
     "fetch_guild_settings",
     "fetch_hostboard_settings",
     "upsert_guild_settings",
@@ -99,6 +110,9 @@ __all__ = [
     "set_member_state",
     "update_member_cache",
     "upsert_guild_members",
+    "ensure_period_state",
+    "ensure_weekly_reset",
+    "fetch_period_state",
     "add_user_weekly_xp",
     "apply_voice_snapshot",
     "clear_user_left",
@@ -124,6 +138,8 @@ __all__ = [
     "set_xp",
     "sync_excluded_users",
     "update_user_xp",
+    "upsert_user_profile",
+    "upsert_user_profiles",
     "upsert_voice_state",
     "prune_weekly_xp",
 ]

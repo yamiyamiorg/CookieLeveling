@@ -7,11 +7,15 @@ from typing import Iterable
 import discord
 
 from cookieleveling.db import (
+    clear_user_left,
     fetch_member_ids,
     mark_members_left,
+    mark_user_left,
     set_member_state,
     update_member_cache,
     upsert_guild_members,
+    upsert_user_profile,
+    upsert_user_profiles,
 )
 from cookieleveling.domain.member_state import (
     MEMBER_STATE_ACTIVE,
@@ -44,6 +48,18 @@ async def sync_member_state(guild: discord.Guild) -> tuple[int, int, int]:
         for member in members
     ]
     upsert_guild_members(rows)
+    upsert_user_profiles(
+        (
+            guild.id,
+            member.id,
+            member.display_name,
+            str(member.display_avatar.url),
+            now,
+        )
+        for member in members
+    )
+    for member in members:
+        clear_user_left(guild.id, member.id)
 
     left_marked = 0
     if complete:
@@ -51,6 +67,8 @@ async def sync_member_state(guild: discord.Guild) -> tuple[int, int, int]:
         active_ids = {member.id for member in members}
         missing_ids = existing_ids - active_ids
         left_marked = mark_members_left(guild.id, missing_ids, now)
+        for user_id in missing_ids:
+            mark_user_left(guild.id, user_id, now)
     else:
         _LOGGER.warning("member sync incomplete: skipping left marking")
 
@@ -82,14 +100,14 @@ async def refresh_member_cache(
             try:
                 member = await guild.fetch_member(user_id)
             except discord.NotFound:
-                if set_member_state(
-                    guild.id, user_id, MEMBER_STATE_LEFT, now
-                ):
+                if set_member_state(guild.id, user_id, MEMBER_STATE_LEFT, now):
                     left_marked += 1
+                mark_user_left(guild.id, user_id, now)
                 continue
             except (discord.Forbidden, discord.HTTPException):
                 failed += 1
                 continue
+
         update_member_cache(
             guild.id,
             user_id,
@@ -97,7 +115,15 @@ async def refresh_member_cache(
             str(member.display_avatar.url),
             now,
         )
+        upsert_user_profile(
+            guild.id,
+            user_id,
+            member.display_name,
+            str(member.display_avatar.url),
+            now,
+        )
         set_member_state(guild.id, user_id, MEMBER_STATE_ACTIVE, now)
+        clear_user_left(guild.id, user_id)
         updated += 1
     return updated, left_marked, failed
 

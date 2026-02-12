@@ -26,12 +26,18 @@
 - Run `/level` and confirm an ephemeral image response is always returned.
 - Toggle `/optout` and confirm the card shows "optout中（XP加算なし）".
 - Verify XP bars render at 0/50/100% without layout breakage.
+- Confirm weekly/monthly/lifetime voice rankboards all update hourly.
+- Confirm weekly/monthly/total host rankboards all update hourly.
 - Confirm no rankboard preview commands exist in the command list.
 - Restart the bot and confirm host confirmation status matches pre-restart state.
 - Confirm host XP continues when the VC contains only excluded users.
+- Confirm users with 0XP are not included in any board.
 - Confirm users not marked deleted remain visible on rankboards after restarts.
 - Restart immediately and confirm rankboard entry count does not drop.
 - Restart the bot and confirm rankboard entry count is unchanged (left users only).
 - Simulate API fetch failures and confirm no users disappear from rankboards.
 - Confirm only users confirmed left (404) are removed from rankboards.
 - Rejoin a previously-left user and confirm they return to rankboards after activity.
+- Confirm events from guilds other than `.env` `GUILD_ID` are ignored.
+- Confirm `weekly reset check` log prints `reset=0` when week key is unchanged.
+- Confirm rankboard header timestamp (`更新 yyyy/mm/dd hh:mm JST`) changes on each render.

@@ -27,3 +27,11 @@
 - Toggle `/optout` and confirm the card shows "optout中（XP加算なし）".
 - Verify XP bars render at 0/50/100% without layout breakage.
 - Confirm no rankboard preview commands exist in the command list.
+- Restart the bot and confirm host confirmation status matches pre-restart state.
+- Confirm host XP continues when the VC contains only excluded users.
+- Confirm users not marked deleted remain visible on rankboards after restarts.
+- Restart immediately and confirm rankboard entry count does not drop.
+- Restart the bot and confirm rankboard entry count is unchanged (left users only).
+- Simulate API fetch failures and confirm no users disappear from rankboards.
+- Confirm only users confirmed left (404) are removed from rankboards.
+- Rejoin a previously-left user and confirm they return to rankboards after activity.
